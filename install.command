@@ -1,13 +1,14 @@
 #!/bin/bash
 #
-# macmon installer
-# Double-click this file (or run it in Terminal) to install macmon so you can
-# launch it from anywhere just by typing:  macmon
+# harmless macmon installer
+# Double-click this file (or run it in Terminal) to install harmless macmon
+# so you can launch it from anywhere just by typing:  macmon
 #
 # Source: https://github.com/harmlessparasite
 #
 
-APP_NAME="macmon"
+APP_NAME="macmon"            # command you type in Terminal
+APP_TITLE="harmless macmon"  # display name of the app
 SRC_DIR="$(cd "$(dirname "$0")" && pwd)"
 SRC_FILE="$SRC_DIR/$APP_NAME"
 INSTALL_DIR="$HOME/Documents/Projects/$APP_NAME"
@@ -15,7 +16,7 @@ BIN_DIR="/usr/local/bin"
 BIN_LINK="$BIN_DIR/$APP_NAME"
 
 echo "=============================================="
-echo "  Installing $APP_NAME"
+echo "  Installing $APP_TITLE"
 echo "=============================================="
 
 # sanity checks
@@ -24,9 +25,52 @@ if [ ! -f "$SRC_FILE" ]; then
     exit 1
 fi
 
-if ! command -v python3 >/dev/null 2>&1; then
-    echo "ERROR: python3 is required but was not found on this system."
-    echo "       Install Python 3 first (https://www.python.org)."
+# ---------------------------------------------------------------------------
+# Dependency handling
+#
+# harmless macmon is a single Python 3 script and uses ONLY the Python standard
+# library (curses, subprocess, os, sys, plistlib, signal, json, re, pathlib,
+# collections, datetime). There are NO third-party packages to install.
+# The one and only dependency is a working `python3`. Make sure it exists,
+# installing it automatically when possible.
+# ---------------------------------------------------------------------------
+ensure_python3() {
+    if command -v python3 >/dev/null 2>&1; then
+        echo "  • Dependency OK: $(command -v python3) ($(python3 --version 2>&1))"
+        return 0
+    fi
+
+    echo "  • python3 not found — attempting to install it..."
+
+    # Preferred: Homebrew
+    if command -v brew >/dev/null 2>&1; then
+        echo "      using Homebrew..."
+        if brew install python3; then
+            command -v python3 >/dev/null 2>&1 && return 0
+        fi
+    fi
+
+    # Fallback: Apple's Command Line Tools (provides python3)
+    if command -v xcode-select >/dev/null 2>&1; then
+        echo "      using xcode-select --install (a system dialog will appear)..."
+        xcode-select --install
+        # The dialog installs in the background; re-check shortly.
+        for i in 1 2 3 4 5 6; do
+            sleep 5
+            command -v python3 >/dev/null 2>&1 && return 0
+        done
+    fi
+
+    # Last resort: open the official Python installer
+    echo "      could not install automatically."
+    echo "      Opening https://www.python.org/downloads/macos/ ..."
+    open "https://www.python.org/downloads/macos/"
+    return 1
+}
+
+if ! ensure_python3; then
+    echo "ERROR: python3 is required but could not be installed automatically."
+    echo "       Please install Python 3, then re-run this installer."
     exit 1
 fi
 

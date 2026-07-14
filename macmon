@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""macmon v2 — macOS Process Analyzer & Cleanup Tool"""
+"""harmless macmon v2 — macOS Process Analyzer & Cleanup Tool"""
 
 import curses, subprocess, os, sys, plistlib, signal, json, re
 from pathlib import Path
@@ -227,7 +227,7 @@ def draw(stdscr, items, selected, cursor, scroll, session, status, counts):
     n_hi, n_me, n_lo = counts
 
     # top bar
-    left  = f'  macmon  v{VERSION}  macOS Process Analyzer{ts_str}'
+    left  = f'  harmless macmon  v{VERSION}  macOS Process Analyzer{ts_str}'
     right = f'  {n_hi} high  {n_me} med  {n_lo} low  '
     pad   = max(0, w - len(left) - len(right))
     sadd(stdscr, 0, 0, (left + ' ' * pad + right).ljust(w),
@@ -495,7 +495,7 @@ def main():
     args = sys.argv[1:]
     if '--help' in args or '-h' in args:
         print(f"""
-macmon v{VERSION} — macOS Process Analyzer & Cleanup Tool
+harmless macmon v{VERSION} — macOS Process Analyzer & Cleanup Tool
 
 Usage:  macmon [options]
 
