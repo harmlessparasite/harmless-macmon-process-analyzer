@@ -81,7 +81,17 @@ cp "$SRC_FILE" "$INSTALL_DIR/$APP_NAME"
 chmod +x "$INSTALL_DIR/$APP_NAME"
 echo "  • Placed app in: $INSTALL_DIR"
 
-# 2. make a symlink in /usr/local/bin so 'macmon' works from any Terminal
+# 2. make a symlink so 'macmon' works from any Terminal.
+#    Prefer /usr/local/bin; if it isn't writable (no admin rights), fall
+#    back to the user-owned ~/bin and make sure that is on the PATH.
+if mkdir -p "$BIN_DIR" 2>/dev/null && [ -w "$BIN_DIR" ]; then
+    BIN_LINK="$BIN_DIR/$APP_NAME"
+else
+    BIN_DIR="$HOME/bin"
+    BIN_LINK="$BIN_DIR/$APP_NAME"
+    echo "  • /usr/local/bin not writable — using $BIN_DIR instead"
+fi
+
 mkdir -p "$BIN_DIR"
 if [ -L "$BIN_LINK" ] || [ -e "$BIN_LINK" ]; then
     rm -f "$BIN_LINK"
@@ -89,13 +99,12 @@ fi
 ln -s "$INSTALL_DIR/$APP_NAME" "$BIN_LINK"
 echo "  • Linked $BIN_LINK -> $INSTALL_DIR/$APP_NAME"
 
-# 3. confirm /usr/local/bin is on PATH
+# 3. make sure the chosen bin dir is on the PATH
 case ":$PATH:" in
-    *":/usr/local/bin:"*) ;;
+    *":$BIN_DIR:"*) ;;
     *)
-        echo "  • NOTE: /usr/local/bin is not on your PATH."
-        echo "    Add this line to ~/.zshrc (or ~/.bash_profile):"
-        echo "        export PATH=\"/usr/local/bin:\$PATH\""
+        echo "  • Adding $BIN_DIR to your PATH (~/.zshrc)"
+        echo "export PATH=\"$BIN_DIR:\$PATH\"" >> "$HOME/.zshrc"
         ;;
 esac
 
