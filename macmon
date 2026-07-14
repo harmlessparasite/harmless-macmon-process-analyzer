@@ -1,0 +1,555 @@
+#!/usr/bin/env python3
+"""macmon v2 — macOS Process Analyzer & Cleanup Tool"""
+
+import curses, subprocess, os, sys, plistlib, signal, json, re
+from pathlib import Path
+from collections import defaultdict
+from datetime import datetime
+
+VERSION      = "2.0"
+SESSION_FILE = Path.home() / '.local' / 'share' / 'macmon' / 'session.json'
+
+HIGH_C = 1; MED_C = 2; LOW_C = 3; ACC_C = 4
+SEL_C  = 5; HDR_C = 6; DIM_C = 7; PREV_C = 8
+
+SYSTEM_PREFIXES = (
+    '/System/', '/usr/libexec/', '/usr/sbin/', '/usr/bin/',
+    '/sbin/', '/bin/', '/System/Cryptexes/', '/System/iOSSupport/',
+)
+
+ESSENTIAL = {
+    'launchd','kernel_task','WindowServer','loginwindow','logd','configd',
+    'mDNSResponder','securityd','distnoted','notifyd','fseventsd','syslogd',
+    'powerd','thermalmonitord','sandboxd','authd','trustd','biometrickitd',
+    'bluetoothd','coreaudiod','coreduetd','dasd','iconservicesd',
+    'launchservicesd','lsd','mds','nsurlsessiond','opendirectoryd',
+    'runningboardd','secd','usbmuxd','usermanagerd','apsd','corebrightnessd',
+    'locationd','mobileassetd','nehelper','nesessionmanager','ps','sysmond',
+    'zsh','bash','sh','fish','python3','python','ssh','sshd','sshd-session',
+    'login','sudo','su','top','htop','tail','less','more','grep','awk','sed',
+    'tccd','hidd','symptomsd','tailspind','airportd','cfprefsd','replayd',
+    'UserEventAgent','CommCenter','sharingd','searchpartyuseragent',
+    'syspolicyd','amfid','endpointsecurityd','xprotectd',
+    'Dock','Finder','SystemUIServer','ControlCenter','MenuBarAgent',
+    'NotificationCenter','Spotlight','SpotlightIndex',
+    'macmon','Terminal','iTerm2','iTerm','Alacritty','kitty','WezTerm',
+}
+
+KNOWN = {
+    'iStatistica Sensors': ('System monitor — redundant if iStat Menus also running', 'HIGH'),
+    'iStatistica':         ('iStatistica system monitor app', 'MEDIUM'),
+    'iStat Menus Status':  ('iStat Menus menu bar monitor', 'MEDIUM'),
+    'iStatMenusDaemon':    ('iStat Menus background daemon (runs as root)', 'MEDIUM'),
+    'Activity Monitor':    ('Activity Monitor app is open', 'LOW'),
+    'MBHelpToolerDaemon':  ('MacBooster / IOBit root daemon — bloatware', 'HIGH'),
+    'iBoostUp':            ('iBoostUp optimization bloatware', 'HIGH'),
+    'MacBooster':          ('MacBooster optimization bloatware', 'HIGH'),
+    'MacKeeper':           ('MacKeeper — considered bloatware', 'HIGH'),
+    'CleanMyMacX':         ('CleanMyMac X background agent', 'MEDIUM'),
+    'CleanMyMac':          ('CleanMyMac background agent', 'MEDIUM'),
+    'AdobeUpdateService':  ('Adobe auto-updater service', 'MEDIUM'),
+    'Adobe Desktop Service':('Adobe Creative Cloud daemon', 'MEDIUM'),
+    'Creative Cloud Helper':('Adobe Creative Cloud helper', 'MEDIUM'),
+    'CCXProcess':          ('Adobe CCX helper process', 'MEDIUM'),
+    'AdobeCRDaemon':       ('Adobe crash reporter daemon', 'LOW'),
+    'AGSService':          ('Adobe Genuine Software daemon', 'MEDIUM'),
+    'VTEncoderXPCService': ('Video encoder XPC — leftover from screen sharing/recording', 'HIGH'),
+    'avconferenced':       ('AV conferencing daemon — high CPU means a hung call', 'MEDIUM'),
+    'DisplayLinkUserAgent':('DisplayLink display driver agent', 'MEDIUM'),
+    'CrashRestartHelper':  ('DisplayLink / Parallels crash-restart watchdog', 'LOW'),
+    'DisplayLinkXpcService':('DisplayLink XPC service', 'MEDIUM'),
+    'prl_disp_service':    ('Parallels Desktop dispatcher service', 'MEDIUM'),
+    'steam_osx':           ('Steam client', 'LOW'),
+    'steamclean':          ('Steam background cleaner daemon', 'LOW'),
+    'SteamService':        ('Steam service daemon', 'LOW'),
+    'Mos':                 ('Mos — mouse smoothing utility', 'LOW'),
+    'LinearMouse':         ('LinearMouse — mouse driver utility', 'LOW'),
+    'Karabiner-Elements':  ('Karabiner keyboard remapper', 'LOW'),
+    'Bartender 4':         ('Bartender — menu bar manager', 'LOW'),
+    'Bartender':           ('Bartender — menu bar manager', 'LOW'),
+    'PopClip':             ('PopClip — text selection popup', 'LOW'),
+    'Dropbox':             ('Dropbox sync client', 'LOW'),
+    'OneDrive':            ('Microsoft OneDrive sync', 'LOW'),
+    'googledrivesync':     ('Google Drive sync client', 'LOW'),
+    'Google Drive':        ('Google Drive sync client', 'LOW'),
+    'Slack':               ('Slack — runs background syncing', 'LOW'),
+    'Discord':             ('Discord — runs in background', 'LOW'),
+    'zoom.us':             ('Zoom — background daemon', 'LOW'),
+    'Spotify':             ('Spotify — background daemon', 'LOW'),
+    'Teams':               ('Microsoft Teams background', 'LOW'),
+    'logioptionsplus_agent':('Logi Options+ background agent', 'LOW'),
+    'LogiMgr Daemon':      ('Logitech Manager daemon', 'LOW'),
+    'contactsd':           ('Contacts sync daemon — check if looping', 'HIGH'),
+    'AddressBookSourceSync':('Address Book sync — can loop and hammer CPU', 'HIGH'),
+    'photoanalysisd':      ('Photos AI analysis daemon — CPU intensive', 'MEDIUM'),
+    'mediaanalysisd':      ('Media analysis daemon — can be CPU heavy', 'MEDIUM'),
+    'backupd':             ('Time Machine backup in progress', 'LOW'),
+    'hermes-agent':        ('Hermes AI gateway agent', 'MEDIUM'),
+}
+
+def run_cmd(cmd, timeout=15):
+    try:
+        return subprocess.run(cmd, shell=True, capture_output=True,
+                              text=True, timeout=timeout).stdout
+    except Exception:
+        return ''
+
+def get_processes():
+    procs = []
+    for line in run_cmd('ps aux').strip().split('\n')[1:]:
+        parts = line.split(None, 10)
+        if len(parts) < 11:
+            continue
+        try:
+            user = parts[0]; pid = int(parts[1])
+            cpu = float(parts[2]); mem = float(parts[3])
+            cmd = parts[10].strip()
+            binary = cmd.split(' --')[0].split('/')[-1].split(' -')[0].strip()
+            procs.append({'pid': pid, 'cpu': cpu, 'mem': mem,
+                          'user': user, 'cmd': cmd, 'binary': binary})
+        except Exception:
+            pass
+    return procs
+
+def get_launch_map():
+    launch_map = defaultdict(list)
+    dirs = [
+        (Path.home() / 'Library/LaunchAgents',  'user login',     False),
+        (Path('/Library/LaunchAgents'),          'all-user login', False),
+        (Path('/Library/LaunchDaemons'),         'system boot',    False),
+        (Path('/System/Library/LaunchAgents'),   'system login',   True),
+        (Path('/System/Library/LaunchDaemons'),  'system boot',    True),
+    ]
+    for directory, scope, is_sys in dirs:
+        if not directory.exists():
+            continue
+        for plist_path in directory.glob('*.plist'):
+            try:
+                with open(plist_path, 'rb') as f:
+                    data = plistlib.load(f)
+                prog = data.get('Program', '') or ''
+                args = data.get('ProgramArguments', []) or []
+                full = prog or (args[0] if args else '')
+                binary = full.split('/')[-1] if full else ''
+                label = data.get('Label', plist_path.stem)
+                if binary:
+                    launch_map[binary].append({
+                        'path': str(plist_path), 'label': label,
+                        'scope': scope, 'is_system': is_sys,
+                    })
+            except Exception:
+                pass
+    return launch_map
+
+def is_system(cmd):
+    return any(cmd.startswith(p) for p in SYSTEM_PREFIXES)
+
+def classify(procs, launch_map):
+    high, medium, low = [], [], []
+    seen = set()
+    for p in procs:
+        if p['pid'] in seen:
+            continue
+        b = p['binary']; cpu = p['cpu']; mem = p['mem']
+        if b in ESSENTIAL:
+            continue
+        if is_system(p['cmd']) and cpu < 1.0 and mem < 0.3 and b not in KNOWN:
+            continue
+        auto    = launch_map.get(b, [])
+        tp_auto = [l for l in auto if not l['is_system']]
+        known   = KNOWN.get(b)
+        entry   = {**p, 'auto_launch': auto, 'tp_auto': tp_auto, 'known': known}
+        seen.add(p['pid'])
+        if known:
+            priority = known[1]
+            if priority == 'HIGH' and cpu < 0.5 and b not in {
+                'MBHelpToolerDaemon','contactsd','AddressBookSourceSync',
+                'VTEncoderXPCService','iBoostUp','MacBooster','MacKeeper',
+            }:
+                priority = 'MEDIUM'
+        elif cpu >= 10:
+            priority = 'HIGH'
+        elif cpu >= 3 or (tp_auto and cpu >= 0.5):
+            priority = 'MEDIUM'
+        elif tp_auto or (not is_system(p['cmd']) and cpu >= 0.3):
+            priority = 'LOW'
+        else:
+            continue
+        if priority == 'HIGH':     high.append(entry)
+        elif priority == 'MEDIUM': medium.append(entry)
+        else:                      low.append(entry)
+    for g in (high, medium, low):
+        g.sort(key=lambda x: x['cpu'], reverse=True)
+    return high, medium, low
+
+def load_session():
+    try:
+        return json.loads(SESSION_FILE.read_text())
+    except Exception:
+        return {'last_killed': [], 'timestamp': None}
+
+def save_session(killed_entries):
+    SESSION_FILE.parent.mkdir(parents=True, exist_ok=True)
+    SESSION_FILE.write_text(json.dumps({
+        'last_killed': list({e['binary'] for e in killed_entries}),
+        'timestamp':   datetime.now().isoformat(),
+    }, indent=2))
+
+def sadd(win, y, x, text, attr=0):
+    try:
+        h, w = win.getmaxyx()
+        if y < 0 or y >= h or x >= w - 1:
+            return
+        win.addnstr(y, x, text, w - x - 1, attr)
+    except curses.error:
+        pass
+
+def build_items(high, medium, low):
+    items = []
+    for group, label, color in (
+        (high,   'HIGH PRIORITY    stop these first',    HIGH_C),
+        (medium, 'MEDIUM PRIORITY  optional daemons',    MED_C),
+        (low,    'LOW PRIORITY     auto-start services', LOW_C),
+    ):
+        if group:
+            items.append({'type': 'header', 'label': label, 'color': color})
+            for e in group:
+                items.append({'type': 'entry', 'entry': e, 'color': color})
+    return items
+
+def draw(stdscr, items, selected, cursor, scroll, session, status, counts):
+    stdscr.erase()
+    h, w = stdscr.getmaxyx()
+    last_killed = set(session.get('last_killed', []))
+    ts = session.get('timestamp', '')
+    ts_str  = f'  last: {ts[:10]}' if ts else ''
+    list_h  = h - 5
+    n_hi, n_me, n_lo = counts
+
+    # top bar
+    left  = f'  macmon  v{VERSION}  macOS Process Analyzer{ts_str}'
+    right = f'  {n_hi} high  {n_me} med  {n_lo} low  '
+    pad   = max(0, w - len(left) - len(right))
+    sadd(stdscr, 0, 0, (left + ' ' * pad + right).ljust(w),
+         curses.color_pair(HDR_C) | curses.A_BOLD)
+
+    # list
+    row = 1
+    entry_idx = -1
+    for abs_i, item in enumerate(items):
+        if row > list_h:
+            break
+        if abs_i < scroll:
+            if item['type'] == 'entry':
+                entry_idx += 1
+            continue
+
+        if item['type'] == 'header':
+            bar = f'  ─── {item["label"]} ' + '─' * max(0, w - len(item["label"]) - 10)
+            sadd(stdscr, row, 0, bar.ljust(w),
+                 curses.color_pair(item['color']) | curses.A_BOLD)
+        else:
+            entry_idx += 1
+            e      = item['entry']
+            ei     = entry_idx
+            is_cur = (abs_i == cursor)
+            is_sel = (ei in selected)
+            was_kil= (e['binary'] in last_killed)
+
+            gutter   = '↩' if was_kil else ' '
+            checkbox = '●' if is_sel  else ' '
+            star     = '★' if e.get('tp_auto') else ' '
+            name     = e['binary'][:24]
+            cpu_s    = f"{e['cpu']:5.1f}%"
+            mem_s    = f"{e['mem']:4.1f}%"
+            scope_s  = ''
+            if e['tp_auto']:
+                scope_s = e['tp_auto'][0]['scope']
+            elif e['auto_launch']:
+                scope_s = e['auto_launch'][0]['scope']
+
+            line = (f' {gutter} [{checkbox}]  {name:<24}  {cpu_s} cpu'
+                    f'  {mem_s} mem  {star} {scope_s}')
+
+            if is_cur:
+                attr = curses.color_pair(SEL_C) | curses.A_BOLD
+            elif is_sel:
+                attr = curses.color_pair(item['color']) | curses.A_BOLD
+            elif was_kil:
+                attr = curses.color_pair(PREV_C)
+            else:
+                attr = curses.color_pair(item['color'])
+
+            sadd(stdscr, row, 0, line.ljust(w - 1), attr)
+        row += 1
+
+    # scrollbar pip
+    if len(items) > list_h + 1:
+        pct = int(scroll / max(1, len(items) - list_h) * (list_h - 1))
+        try:
+            stdscr.addch(1 + min(pct, list_h - 1), w - 1, ord('|'),
+                         curses.color_pair(DIM_C) | curses.A_DIM)
+        except curses.error:
+            pass
+
+    # detail strip
+    det = h - 4
+    sadd(stdscr, det, 0, '─' * (w - 1), curses.color_pair(DIM_C) | curses.A_DIM)
+    if 0 <= cursor < len(items) and items[cursor]['type'] == 'entry':
+        e = items[cursor]['entry']
+        if e.get('known'):
+            detail = f'  {e["binary"]}  —  {e["known"][0]}'
+        elif e['auto_launch']:
+            scopes = ', '.join(dict.fromkeys(l['scope'] for l in e['auto_launch']))
+            detail = f'  {e["binary"]}  —  auto-starts at: {scopes}'
+        else:
+            detail = f'  {e["binary"]}  pid {e["pid"]}  user: {e["user"]}'
+        sadd(stdscr, det + 1, 0, detail, curses.color_pair(ACC_C))
+
+    # footer
+    n_sel = len(selected)
+    sel_s = f'{n_sel} selected' if n_sel else 'none selected'
+    sadd(stdscr, h - 2, 0,
+         (f'  {status}' if status else
+          f'  ↑↓ navigate   SPACE select   ENTER confirm'
+          f'   R repeat last   A all-HIGH   Q quit   [{sel_s}]').ljust(w),
+         curses.color_pair(ACC_C) | curses.A_BOLD if status else curses.color_pair(HDR_C))
+    sadd(stdscr, h - 1, 0,
+         '  ● selected   ★ auto-starts at login/boot   ↩ killed last session'.ljust(w),
+         curses.color_pair(DIM_C) | curses.A_DIM)
+
+    stdscr.refresh()
+
+def confirm_dialog(stdscr, entries):
+    h, w = stdscr.getmaxyx()
+    body  = [f'  Stop {len(entries)} process(es)?', '']
+    body += [f'    · {e["binary"][:38]}  pid {e["pid"]}' for e in entries[:14]]
+    if len(entries) > 14:
+        body.append(f'    … and {len(entries) - 14} more')
+    body += ['', '  Y  confirm      N / ESC  cancel']
+    dh = min(len(body) + 2, h - 2)
+    dw = min(max((len(l) for l in body), default=40) + 4, w - 4)
+    dy = max(0, (h - dh) // 2)
+    dx = max(0, (w - dw) // 2)
+    try:
+        win = curses.newwin(dh, dw, dy, dx)
+        win.box()
+        sadd(win, 0, 2, ' Confirm Kill ', curses.color_pair(HDR_C) | curses.A_BOLD)
+        for i, line in enumerate(body[:dh - 2]):
+            sadd(win, i + 1, 0, line,
+                 curses.color_pair(ACC_C) | curses.A_BOLD if i == 0 else 0)
+        win.refresh()
+        while True:
+            k = win.getch()
+            if k in (ord('y'), ord('Y'), 10, 13): return True
+            if k in (ord('n'), ord('N'), 27):     return False
+    except curses.error:
+        return False
+
+def run_tui(high, medium, low, session):
+    items = build_items(high, medium, low)
+    if not items:
+        return []
+    entry_positions = [i for i, it in enumerate(items) if it['type'] == 'entry']
+    if not entry_positions:
+        return []
+    item_to_ei  = {pos: ei for ei, pos in enumerate(entry_positions)}
+    last_killed = set(session.get('last_killed', []))
+    prev_count  = sum(1 for p in entry_positions
+                      if items[p]['entry']['binary'] in last_killed)
+    counts = (len(high), len(medium), len(low))
+    result = []
+
+    def step(cur, d):
+        try:    idx = entry_positions.index(cur)
+        except  ValueError: return entry_positions[0]
+        return entry_positions[max(0, min(len(entry_positions) - 1, idx + d))]
+
+    def tui_main(stdscr):
+        nonlocal result
+        curses.curs_set(0)
+        curses.start_color()
+        curses.use_default_colors()
+        curses.init_pair(HIGH_C,  curses.COLOR_RED,     -1)
+        curses.init_pair(MED_C,   curses.COLOR_YELLOW,  -1)
+        curses.init_pair(LOW_C,   curses.COLOR_GREEN,   -1)
+        curses.init_pair(ACC_C,   curses.COLOR_CYAN,    -1)
+        curses.init_pair(SEL_C,   curses.COLOR_BLACK,   curses.COLOR_WHITE)
+        curses.init_pair(HDR_C,   curses.COLOR_BLACK,   curses.COLOR_CYAN)
+        curses.init_pair(DIM_C,   curses.COLOR_WHITE,   -1)
+        curses.init_pair(PREV_C,  curses.COLOR_MAGENTA, -1)
+
+        cursor   = entry_positions[0]
+        scroll   = 0
+        selected = set()
+        status   = (f'R  →  re-select {prev_count} process(es) from last session'
+                    if prev_count else '')
+
+        while True:
+            h    = stdscr.getmaxyx()[0]
+            list_h = h - 5
+            if cursor < scroll:                    scroll = cursor
+            if cursor >= scroll + list_h:          scroll = cursor - list_h + 1
+
+            draw(stdscr, items, selected, cursor, scroll, session, status, counts)
+            status = ''
+            key = stdscr.getch()
+
+            if key in (ord('q'), ord('Q'), 27):
+                break
+            elif key == curses.KEY_UP:
+                cursor = step(cursor, -1)
+            elif key == curses.KEY_DOWN:
+                cursor = step(cursor, 1)
+            elif key == curses.KEY_PPAGE:
+                for _ in range(max(1, list_h // 2)): cursor = step(cursor, -1)
+            elif key == curses.KEY_NPAGE:
+                for _ in range(max(1, list_h // 2)): cursor = step(cursor, 1)
+            elif key == ord(' '):
+                ei = item_to_ei.get(cursor)
+                if ei is not None:
+                    selected.discard(ei) if ei in selected else selected.add(ei)
+                    cursor = step(cursor, 1)
+            elif key in (ord('r'), ord('R')):
+                prev = {item_to_ei[p] for p in entry_positions
+                        if items[p]['entry']['binary'] in last_killed}
+                selected = prev
+                status = (f'Selected {len(prev)} from last session'
+                          if prev else 'No matches from last session')
+            elif key in (ord('a'), ord('A')):
+                high_eis = {item_to_ei[p] for p in entry_positions
+                            if items[p]['color'] == HIGH_C}
+                if high_eis and high_eis.issubset(selected):
+                    selected -= high_eis
+                    status = 'Deselected all HIGH priority'
+                else:
+                    selected |= high_eis
+                    status = f'Selected {len(high_eis)} HIGH priority process(es)'
+            elif key in (10, 13, curses.KEY_ENTER):
+                if not selected:
+                    status = 'Nothing selected — use SPACE to mark processes'
+                    continue
+                flat    = [items[p]['entry'] for p in entry_positions]
+                to_kill = [flat[ei] for ei in sorted(selected)]
+                if confirm_dialog(stdscr, to_kill):
+                    result = to_kill
+                    break
+                else:
+                    status = 'Cancelled'
+
+    curses.wrapper(tui_main)
+    return result
+
+def do_kill(entries):
+    killed = []
+    for e in entries:
+        pid, binary = e['pid'], e['binary']
+        try:
+            os.kill(pid, signal.SIGTERM)
+            print(f'  ✓  {binary}  (pid {pid})')
+            killed.append(e)
+        except ProcessLookupError:
+            print(f'  ~  {binary}  already gone')
+            killed.append(e)
+        except PermissionError:
+            r = subprocess.run(['sudo', 'kill', '-TERM', str(pid)], capture_output=True)
+            if r.returncode == 0:
+                print(f'  ✓  {binary}  (pid {pid})  [sudo]')
+                killed.append(e)
+            else:
+                print(f'  ✗  {binary}  permission denied — run: sudo kill {pid}')
+        for la in e.get('tp_auto', []):
+            ans = input(f'     Disable auto-start? ({Path(la["path"]).name}) [y/N] ').strip().lower()
+            if ans == 'y':
+                cmd = f'launchctl unload \'{la["path"]}\''
+                if 'Daemons' in la['path']:
+                    cmd = f'sudo {cmd}'
+                r = subprocess.run(cmd, shell=True, capture_output=True)
+                print(f'     {"✓  disabled" if r.returncode == 0 else "✗  failed — run: " + cmd}')
+    return killed
+
+def print_plain(high, medium, low, session):
+    R='\033[91m'; Y='\033[93m'; G='\033[92m'; C='\033[96m'
+    B='\033[1m';  D='\033[2m';  X='\033[0m';  M='\033[95m'
+    last_killed = set(session.get('last_killed', []))
+    def grp(label, color, entries):
+        if not entries: return
+        print(f'\n{B}{color}{"━"*66}{X}\n{B}{color}  {label}{X}\n{B}{color}{"━"*66}{X}')
+        for e in entries:
+            b = e['binary']
+            prev = f'{M}↩{X}' if b in last_killed else ' '
+            star = f'{C}★{X}' if e.get('tp_auto') else ' '
+            print(f' {prev} [ ] {color}{b[:26]:<26}{X}  {e["cpu"]:5.1f}%cpu  {e["mem"]:4.1f}%mem  {star}')
+            if e.get('known'):
+                print(f'         {D}{e["known"][0]}{X}')
+            if e.get('auto_launch'):
+                scopes = ', '.join(dict.fromkeys(l['scope'] for l in e['auto_launch']))
+                print(f'         {D}auto-starts: {scopes}{X}')
+    grp('HIGH PRIORITY    stop these first',    R, high)
+    grp('MEDIUM PRIORITY  optional daemons',    Y, medium)
+    grp('LOW PRIORITY     auto-start services', G, low)
+    total = len(high) + len(medium) + len(low)
+    print(f'\n{"─"*66}\n{B}{total} processes.{X}  {C}★{X} auto-starts  {M}↩{X} killed last session\n')
+
+def main():
+    args = sys.argv[1:]
+    if '--help' in args or '-h' in args:
+        print(f"""
+macmon v{VERSION} — macOS Process Analyzer & Cleanup Tool
+
+Usage:  macmon [options]
+
+Options:
+  --no-kill   Print analysis without interactive UI
+  --high      Show HIGH priority only
+  -h, --help  This help
+
+TUI keys:
+  ↑ ↓         Navigate list
+  SPACE       Select / deselect process
+  ENTER       Confirm and kill selected
+  R           Re-select processes killed last session
+  A           Toggle all HIGH priority
+  PgUp/PgDn   Scroll half a page
+  Q / ESC     Quit without killing
+
+Markers:
+  ●  Selected for killing
+  ★  Has a third-party auto-start (LaunchAgent/Daemon)
+  ↩  Was killed in your last macmon session
+""")
+        return
+
+    no_kill   = '--no-kill' in args
+    only_high = '--high'    in args
+    session   = load_session()
+
+    sys.stderr.write('macmon  scanning...\n')
+    sys.stderr.flush()
+
+    procs      = get_processes()
+    launch_map = get_launch_map()
+    high, medium, low = classify(procs, launch_map)
+    if only_high:
+        medium, low = [], []
+
+    if no_kill or not sys.stdout.isatty():
+        print_plain(high, medium, low, session)
+        return
+
+    if not (high or medium or low):
+        print('\n  ✓  No notable unnecessary processes found.\n')
+        return
+
+    to_kill = run_tui(high, medium, low, session)
+
+    if to_kill:
+        print(f'\nStopping {len(to_kill)} process(es):\n')
+        killed = do_kill(to_kill)
+        if killed:
+            save_session(killed)
+            print(f'\n  Session saved — next run will highlight these {len(killed)} process(es) with ↩')
+    print()
+
+if __name__ == '__main__':
+    main()
