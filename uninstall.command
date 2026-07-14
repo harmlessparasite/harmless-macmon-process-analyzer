@@ -8,11 +8,12 @@
 #
 
 APP_NAME="macmon"
+APP_VERSION="1.01"           # release version
 INSTALL_DIR="$HOME/Documents/Projects/$APP_NAME"
 BIN_LINK="/usr/local/bin/$APP_NAME"
 
 echo "=============================================="
-echo "  Uninstalling $APP_NAME"
+echo "  Uninstalling $APP_NAME v$APP_VERSION"
 echo "=============================================="
 
 # remove the global launcher

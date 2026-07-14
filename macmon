@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""harmless macmon v2 — macOS Process Analyzer & Cleanup Tool"""
+"""harmless macmon v1.01 — macOS Process Analyzer & Cleanup Tool"""
 
 import curses, subprocess, os, sys, plistlib, signal, json, re
 from pathlib import Path
 from collections import defaultdict
 from datetime import datetime
 
-VERSION      = "2.0"
+VERSION      = "1.01"
 SESSION_FILE = Path.home() / '.local' / 'share' / 'macmon' / 'session.json'
 
 HIGH_C = 1; MED_C = 2; LOW_C = 3; ACC_C = 4
@@ -497,7 +497,7 @@ def main():
         print(f"""
 harmless macmon v{VERSION} — macOS Process Analyzer & Cleanup Tool
 
-Usage:  macmon [options]
+Usage:  macmon [options]   (harmless macmon v{VERSION})
 
 Options:
   --no-kill   Print analysis without interactive UI

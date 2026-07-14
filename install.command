@@ -9,6 +9,7 @@
 
 APP_NAME="macmon"            # command you type in Terminal
 APP_TITLE="harmless macmon"  # display name of the app
+APP_VERSION="1.01"           # release version
 SRC_DIR="$(cd "$(dirname "$0")" && pwd)"
 SRC_FILE="$SRC_DIR/$APP_NAME"
 INSTALL_DIR="$HOME/Documents/Projects/$APP_NAME"
@@ -16,7 +17,7 @@ BIN_DIR="/usr/local/bin"
 BIN_LINK="$BIN_DIR/$APP_NAME"
 
 echo "=============================================="
-echo "  Installing $APP_TITLE"
+echo "  Installing $APP_TITLE v$APP_VERSION"
 echo "=============================================="
 
 # sanity checks

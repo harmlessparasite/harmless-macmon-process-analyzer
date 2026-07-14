@@ -2,6 +2,8 @@
 
 **Source:** https://github.com/harmlessparasite
 
+**Version:** 1.01
+
 `harmless macmon` is a single-file, dependency-free command-line tool for macOS that
 helps you find and stop unnecessary, high-CPU, or bloatware background
 processes. It scans running processes and third-party auto-start services
