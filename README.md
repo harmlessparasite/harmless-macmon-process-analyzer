@@ -61,8 +61,8 @@ report.
 Grab `macmon.dmg` from the releases and:
 
 1. Double-click **`install.command`**.
-   - Copies the app to `~/Documents/Projects/macmon/`
-   - Symlinks it into `/usr/local/bin/macmon`
+   - Copies the app to `~/Applications/harmless-macmon/`
+  - Symlinks the `macmon` command into `~/bin/macmon` (no admin rights needed)
 2. Open a **new** Terminal window and just type:
 
    ```sh

@@ -9,7 +9,7 @@
 
 APP_NAME="macmon"
 APP_VERSION="1.01"           # release version
-INSTALL_DIR="$HOME/Documents/Projects/$APP_NAME"
+INSTALL_DIR="$HOME/Applications/harmless-macmon"
 BIN_LINK="/usr/local/bin/$APP_NAME"
 
 echo "=============================================="
