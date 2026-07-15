@@ -1,10 +1,12 @@
-# ABOUT — harmless macmon
+# ABOUT — macmon
+
+> Author: Wasim Osman
 
 > Future-reference notes for this project. (See `README.md` for full user docs.)
 
 ## What this app is
 
-**harmless macmon** is a single-file, dependency-free command-line tool for
+**macmon** is a single-file, dependency-free command-line tool for
 macOS that helps you find and stop unnecessary, high-CPU, or bloatware
 background processes. It is a Python 3 script (`macmon`) — no compilation,
 no `pip install`, no third-party packages (uses only the Python standard
@@ -28,7 +30,7 @@ collections, datetime).
 
 ## Install / uninstall (from the DMG)
 
-- `install.command` copies the app to `~/Applications/harmless-macmon/`
+- `install.command` copies the app to `~/Applications/macmon/`
   and symlinks the `macmon` command into `~/bin/macmon` (falls back to
   `~/bin` when `/usr/local/bin` isn't writable). It also ensures Python 3
   is present.
@@ -61,4 +63,4 @@ Current release: **1.01** (tag `v1.01` on GitHub).
 
 ## Source
 
-https://github.com/harmlessparasite/harmless-macmon-process-analyzer
+https://github.com/harmlessparasite/macmon-process-analyzer

@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""harmless macmon v1.01 — macOS Process Analyzer & Cleanup Tool"""
+"""macmon v1.01 — macOS Process Analyzer & Cleanup Tool
+
+Author: Wasim Osman
+"""
 
 import curses, subprocess, os, sys, plistlib, signal, json, re
 from pathlib import Path
@@ -227,7 +230,7 @@ def draw(stdscr, items, selected, cursor, scroll, session, status, counts):
     n_hi, n_me, n_lo = counts
 
     # top bar
-    left  = f'  harmless macmon  v{VERSION}  macOS Process Analyzer{ts_str}'
+    left  = f'  macmon  v{VERSION}  macOS Process Analyzer{ts_str}'
     right = f'  {n_hi} high  {n_me} med  {n_lo} low  '
     pad   = max(0, w - len(left) - len(right))
     sadd(stdscr, 0, 0, (left + ' ' * pad + right).ljust(w),
@@ -495,9 +498,9 @@ def main():
     args = sys.argv[1:]
     if '--help' in args or '-h' in args:
         print(f"""
-harmless macmon v{VERSION} — macOS Process Analyzer & Cleanup Tool
+macmon v{VERSION} — macOS Process Analyzer & Cleanup Tool  (by Wasim Osman)
 
-Usage:  macmon [options]   (harmless macmon v{VERSION})
+Usage:  macmon [options]   (macmon v{VERSION})
 
 Options:
   --no-kill   Print analysis without interactive UI

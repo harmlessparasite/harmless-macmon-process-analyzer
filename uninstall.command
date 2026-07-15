@@ -4,12 +4,13 @@
 # Double-click this file (or run it in Terminal) to completely remove macmon
 # from your system.
 #
-# Source: https://github.com/harmlessparasite
+# Author: Wasim Osman
+# Source: https://github.com/harmlessparasite/macmon-process-analyzer
 #
 
 APP_NAME="macmon"
 APP_VERSION="1.01"           # release version
-INSTALL_DIR="$HOME/Applications/harmless-macmon"
+INSTALL_DIR="$HOME/Applications/macmon"
 BIN_LINK="/usr/local/bin/$APP_NAME"
 
 echo "=============================================="

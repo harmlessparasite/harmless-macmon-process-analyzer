@@ -1,10 +1,12 @@
-# harmless macmon — macOS Process Analyzer & Cleanup Tool
+# macmon — macOS Process Analyzer & Cleanup Tool
 
-**Source:** https://github.com/harmlessparasite
+**Author:** Wasim Osman
+
+**Source:** https://github.com/harmlessparasite/macmon-process-analyzer
 
 **Version:** 1.01
 
-`harmless macmon` is a single-file, dependency-free command-line tool for macOS that
+`macmon` is a single-file, dependency-free command-line tool for macOS that
 helps you find and stop unnecessary, high-CPU, or bloatware background
 processes. It scans running processes and third-party auto-start services
 (LaunchAgents / LaunchDaemons), classifies them by priority, and lets you
@@ -61,7 +63,7 @@ report.
 Grab `macmon.dmg` from the releases and:
 
 1. Double-click **`install.command`**.
-   - Copies the app to `~/Applications/harmless-macmon/`
+   - Copies the app to `~/Applications/macmon/`
   - Symlinks the `macmon` command into `~/bin/macmon` (no admin rights needed)
 2. Open a **new** Terminal window and just type:
 

@@ -1,18 +1,19 @@
 #!/bin/bash
 #
-# harmless macmon installer
-# Double-click this file (or run it in Terminal) to install harmless macmon
+# macmon installer
+# Double-click this file (or run it in Terminal) to install macmon
 # so you can launch it from anywhere just by typing:  macmon
 #
-# Source: https://github.com/harmlessparasite
+# Author: Wasim Osman
+# Source: https://github.com/harmlessparasite/macmon-process-analyzer
 #
 
 APP_NAME="macmon"            # command you type in Terminal
-APP_TITLE="harmless macmon"  # display name of the app
+APP_TITLE="macmon"           # display name of the app
 APP_VERSION="1.01"           # release version
 SRC_DIR="$(cd "$(dirname "$0")" && pwd)"
 SRC_FILE="$SRC_DIR/$APP_NAME"
-INSTALL_DIR="$HOME/Applications/harmless-macmon"
+INSTALL_DIR="$HOME/Applications/macmon"
 BIN_DIR="/usr/local/bin"
 BIN_LINK="$BIN_DIR/$APP_NAME"
 
@@ -29,7 +30,7 @@ fi
 # ---------------------------------------------------------------------------
 # Dependency handling
 #
-# harmless macmon is a single Python 3 script and uses ONLY the Python standard
+# macmon is a single Python 3 script and uses ONLY the Python standard
 # library (curses, subprocess, os, sys, plistlib, signal, json, re, pathlib,
 # collections, datetime). There are NO third-party packages to install.
 # The one and only dependency is a working `python3`. Make sure it exists,
